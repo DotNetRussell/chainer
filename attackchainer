@@ -1,11 +1,56 @@
 #!/usr/bin/python3
 
+import mysql.connector
 import yaml
+import sys
+import os
+
+
+if len(sys.argv) < 3:
+	print('./attachainer <seedsFilePath> <configFilePath>')
+	quit()
 
 global config
-with open('./config.yaml') as configFile:
+global seeds
+
+with open(str(sys.argv[2])) as configFile:
 	config = yaml.load(configFile, Loader=yaml.FullLoader)
+with open(str(sys.argv[1])) as seedsFile:
+	seeds = seedsFile.readlines()
+
+dbUser = config[0]['dbUser']
+dbPass = config[0]['dbPass']
+
+print(dbUser)
+print(dbPass)
+
+dbconnection = mysql.connector.connect(host="localhost", database='attackchainer', user='root', password='password')
+dbcursor = dbconnection.cursor()
+
+def checkIfRowExists(table, column, value):
+	sql = "select count(*) from " + table + " where " + column +" = '" + value + "';"
+	dbcursor.execute(sql)
+	count = dbcursor.fetchone()
+	return count[0] > 0
 
 
-for stage in config.keys():
-	print(stage)
+print('Loading seeds into db')
+for seed in seeds:
+	seed = seed.strip()
+	if seed and not checkIfRowExists("seed","domain",seed):
+		sql = "INSERT INTO seed (id,domain) VALUES (%s, %s)"
+		values = (0,seed)
+		dbcursor.execute(sql,values)
+		dbconnection.commit()
+
+for value in config:
+	if 'name' in value.keys():
+		print('Running: ' + value['name'])
+	if 'commands' in value.keys():
+		for command in value['commands']:
+
+			p = os.popen(command)
+			print(p.read())
+
+	elif 'run' in value.keys(): 
+		print(value['run'])

@@ -1,20 +1,23 @@
 ---
-stage:
+-
     id: 1
-    name: "setup"
+    name: "Setup"
+    dbUser: "root"
+    dbPass: "password"
     commands:
-    - "apt get update;"
-    - "apt get install apache2 -y;"
-    - "service apache2 start;"
-    - "apt get install sublist3r -y;"
-    - "apt get install nmap -y;"
-    - "mysql -uroot '-pXXXX' -e 'CREATE DATABASE attackchainer'"
-    - "mysql -uroot '-pXXXX' -e 'CREATE TABLE `seeds` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
-    - "mysql -uroot '-pXXXX' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
-
-stage:
+    - "echo 'installing shit'"
+#   - "apt-get update;"
+#   - "apt-get install apache2 -y;"
+#   - "service apache2 start;"
+#   - "apt-get install sublist3r -y;"
+#   - "apt-get install nmap -y;"
+#   - "mysql -u root '-ppassword' -e 'CREATE DATABASE attackchainer;'"
+#   - "mysql -u root '-ppassword' 'attackchainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
+#   - "mysql -u root '-ppassword' 'attackchainer' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
+ 
+-
     id: 2
-    name: "phase one scan"
+    name: "Phase one scan"
     run:
     - application:
       cmd: "./sublist3r ${INPUT}$ -n -o .sublist3rtmp"
