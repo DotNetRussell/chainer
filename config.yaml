@@ -1,0 +1,48 @@
+---
+stage:
+    id: 1
+    name: "setup"
+    commands:
+    - "apt get update;"
+    - "apt get install apache2 -y;"
+    - "service apache2 start;"
+    - "apt get install sublist3r -y;"
+    - "apt get install nmap -y;"
+    - "mysql -uroot '-pXXXX' -e 'CREATE DATABASE attackchainer'"
+    - "mysql -uroot '-pXXXX' -e 'CREATE TABLE `seeds` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
+    - "mysql -uroot '-pXXXX' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));'"
+
+stage:
+    id: 2
+    name: "phase one scan"
+    run:
+    - application:
+      cmd: "./sublist3r ${INPUT}$ -n -o .sublist3rtmp"
+      input: "${db.host.domain}$"
+      output:
+      - sourcefile: ".sublist3rtmp"
+        store:
+        - location: "${db.subdomain.domain}$"
+        cleanup:
+      - cmd: "rm .sublist3rtmp"
+    - application:
+      cmd: "${db}$"
+      sql: "delete from subdomain where id not in (select subs.id from host as hosts join subdomain as subs on subs.domain like concat('%', hosts.domain));"
+#	- application:
+#         cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp"
+#         input: "${db.subdomain.domain}$"
+#	  output:
+#	  - sourcefile: ".nmaptmp"
+#	    cmd: "cat .nmaptmp | grep Up | cut -d ' ' -f2"
+#	    store:
+#	      - sql: "UPDATE subdomain SET ip = ${RESULT}$ where domain = ${INPUT}$"
+#	    cleanup:
+#	      - cmd: "rm .nmaptmp"
+#	- application:
+#	  cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}"
+#	  input: ${db.subdomain.ip}$
+#          output:
+#          - cmd: "$(cat .nmaptmp | grep open | grep -v "#" | grep -o -P '(?<=Ports: ).*') ; do echo $port | cut -d "/" -f1,5 > ports; done"
+#            store:
+#            - location
+#	- application: 

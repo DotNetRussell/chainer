@@ -1,0 +1,11 @@
+#!/usr/bin/python3
+
+import yaml
+
+global config
+with open('./config.yaml') as configFile:
+	config = yaml.load(configFile, Loader=yaml.FullLoader)
+
+
+for stage in config.keys():
+	print(stage)
