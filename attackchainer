@@ -4,7 +4,7 @@ import mysql.connector
 import yaml
 import sys
 import os
-
+import re
 
 if len(sys.argv) < 3:
 	print('./attachainer <seedsFilePath> <configFilePath>')
@@ -27,12 +27,49 @@ print(dbPass)
 dbconnection = mysql.connector.connect(host="localhost", database='attackchainer', user='root', password='password')
 dbcursor = dbconnection.cursor()
 
+CHAINER_COMMAND_CONST = r"(\${).*(}\$)"
+CHAINER_COMMAND_PREFIX_CONST = '(\${)'
+CHAINER_COMMAND_POSTFIX_CONST = '(}\$)'
+DB_CONST = 'db'
+INPUT_CONST = '(\${INPUT}\$)'
+EMPTY = ''
+
 def checkIfRowExists(table, column, value):
 	sql = "select count(*) from " + table + " where " + column +" = '" + value + "';"
 	dbcursor.execute(sql)
 	count = dbcursor.fetchone()
 	return count[0] > 0
 
+def getDataFromDb(table, column):
+	sql = "select " + column + " from " + table + ";"
+	dbcursor.execute(sql)
+	return dbcursor.fetchall()
+
+def storeDataInDb(table, column, data):
+	for line in data:
+		sql = 'INSERT INTO ' + table + ' VALUES(null,\"' + line + '\");'
+		dbcursor.execute(sql)
+		dbconnection.commit()
+
+def getCommand(chainerCommand):
+	command = re.sub(CHAINER_COMMAND_PREFIX_CONST, EMPTY, chainerCommand)
+	command = re.sub(CHAINER_COMMAND_POSTFIX_CONST, EMPTY, command)
+	return command
+
+def processInputChainerCommand(chainerCommand):
+	command = getCommand(chainerCommand)
+	if DB_CONST in command:
+		head,table,column = command.split('.')
+		return getDataFromDb(table,column)
+
+def processOutputChainerCommand(storeLocation, data):
+	command = getCommand(storeLocation)
+	if DB_CONST in command:
+		head,table,column = command.split('.')
+		storeDataInDb(table,column,data)
+
+def composeBashCommandWithInput(command, input):
+	return re.sub(INPUT_CONST, input, command)
 
 print('Loading seeds into db')
 for seed in seeds:
@@ -46,11 +83,47 @@ for seed in seeds:
 for value in config:
 	if 'name' in value.keys():
 		print('Running: ' + value['name'])
-	if 'commands' in value.keys():
+
+	if value['id'] == 0:
 		for command in value['commands']:
 
-			p = os.popen(command)
-			print(p.read())
+			process = os.popen(command)
+			output = process.read().strip()
+			if output:
+				print(output)
 
 	elif 'run' in value.keys(): 
-		print(value['run'])
+		for application in value['run']:
+			inputCommand = application['input']
+			cmd = application['cmd']
+			outputObject = application['output']
+			sourceFile = EMPTY
+			storeLocation = EMPTY
+			isChainerOutputLocation = False
+
+			print(outputObject)
+
+			if 'sourcefile' in outputObject:
+				sourceFile = outputObject['sourcefile']
+			if 'store' in outputObject:
+				if 'location' in outputObject['store']:
+					storeLocation = outputObject['store']['location']
+
+				isChainerOutputLocation = re.search(CHAINER_COMMAND_CONST, storeLocation)
+
+			chainerCommand = re.search(CHAINER_COMMAND_CONST, inputCommand)
+			if chainerCommand:
+				for item in processInputChainerCommand(chainerCommand.group()):
+					inputData = item[0]
+					command = composeBashCommandWithInput(cmd, inputData)
+					print('Running: ' + command)
+#					process = os.popen(command)
+
+					outputData = EMPTY
+
+					if sourceFile:
+						outputData = open(sourceFile, 'r').readlines()
+
+					if outputData and isChainerOutputLocation:
+						processOutputChainerCommand(storeLocation, outputData)
+
