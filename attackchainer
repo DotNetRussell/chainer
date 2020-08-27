@@ -21,9 +21,6 @@ with open(str(sys.argv[1])) as seedsFile:
 dbUser = config[0]['dbUser']
 dbPass = config[0]['dbPass']
 
-print(dbUser)
-print(dbPass)
-
 dbconnection = mysql.connector.connect(host="localhost", database='attackchainer', user='root', password='password')
 dbcursor = dbconnection.cursor()
 
@@ -41,17 +38,25 @@ def checkIfRowExists(table, column, value):
 	return count[0] > 0
 
 def getDataFromDb(table, column):
+	print('Getting db.' + table + '.' + column)
 	sql = "select " + column + " from " + table + ";"
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
 def storeDataInDb(table, column, data):
+	print('Storing results in db.'+table+'.'+column)
+
+	input = []
 	for line in data:
 		entry = line.strip()
 		if not checkIfRowExists(table, column, entry):
-			sql = 'INSERT INTO ' + table + ' VALUES(null,\"' + entry + '\");'
-			dbcursor.execute(sql)
-			dbconnection.commit()
+			input.append(str(entry))
+
+	if len(input) > 0:
+		params = ['(null, "%s")' for item in input]
+		sql = 'INSERT INTO ' + table + ' (id, ' + column +') VALUES %s;' % ','.join(params)
+		dbcursor.execute(sql, input)
+		dbconnection.commit()
 
 def getCommand(chainerCommand):
 	command = re.sub(CHAINER_COMMAND_PREFIX_CONST, EMPTY, chainerCommand)
@@ -72,6 +77,10 @@ def processOutputChainerCommand(storeLocation, data):
 
 def composeBashCommandWithInput(command, input):
 	return re.sub(INPUT_CONST, input, command)
+
+def runSqlCommand(sql):
+	print('Running sql command ' + sql)
+	dbcursor.execute(sql)
 
 print('Loading seeds into db')
 for seed in seeds:
@@ -94,38 +103,46 @@ for value in config:
 			if output:
 				print(output)
 
-	elif 'run' in value.keys(): 
+	elif 'run' in value.keys():
 		for application in value['run']:
-			inputCommand = application['input']
 			cmd = application['cmd']
-			outputObject = application['output']
-			sourceFile = EMPTY
-			storeLocation = EMPTY
-			isChainerOutputLocation = False
 
-			print(outputObject)
+			if DB_CONST in cmd:
+				runSqlCommand(application['sql'])
+			else:
+				inputCommand = application['input']
+				outputObject = application['output']
+				sourceFile = EMPTY
+				storeLocation = EMPTY
+				isChainerOutputLocation = False
+				cleanupCommand = EMPTY
 
-			if 'sourcefile' in outputObject:
-				sourceFile = outputObject['sourcefile']
-			if 'store' in outputObject:
-				if 'location' in outputObject['store']:
-					storeLocation = outputObject['store']['location']
+				if 'sourcefile' in outputObject:
+					sourceFile = outputObject['sourcefile']
+				if 'store' in outputObject:
+					if 'location' in outputObject['store']:
+						storeLocation = outputObject['store']['location']
 
-				isChainerOutputLocation = re.search(CHAINER_COMMAND_CONST, storeLocation)
+					isChainerOutputLocation = re.search(CHAINER_COMMAND_CONST, storeLocation)
+				if 'cleanup' in application:
+					cleanupCommand = application['cleanup']['cmd']
 
-			chainerCommand = re.search(CHAINER_COMMAND_CONST, inputCommand)
-			if chainerCommand:
-				for item in processInputChainerCommand(chainerCommand.group()):
-					inputData = item[0]
-					command = composeBashCommandWithInput(cmd, inputData)
-					print('Running: ' + command)
-#					process = os.popen(command)
+				chainerCommand = re.search(CHAINER_COMMAND_CONST, inputCommand)
+				if chainerCommand:
+					for item in processInputChainerCommand(chainerCommand.group()):
+						inputData = item[0]
+						command = composeBashCommandWithInput(cmd, inputData)
+						print('Running: ' + command)
+#						process = os.popen(command)
+						outputData = process.read()
 
-					outputData = EMPTY
+						if sourceFile:
+							outputData = open(sourceFile, 'r').readlines()
 
-					if sourceFile:
-						outputData = open(sourceFile, 'r').readlines()
+						if outputData and isChainerOutputLocation:
+							print('Processing output')
+							processOutputChainerCommand(storeLocation, outputData)
 
-					if outputData and isChainerOutputLocation:
-						processOutputChainerCommand(storeLocation, outputData)
-
+						if cleanupCommand:
+#							os.popen(cleanupCommand)
+							print(cleanupCommand)

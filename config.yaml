@@ -29,10 +29,10 @@
         location: "${db.subdomain.domain}$"
       cleanup:
        cmd: "rm .sublist3rtmp"
+    - application:
+      cmd: "${db}$"
+      sql: "delete from subdomain where id not in (select subs.id from host as hosts join subdomain as subs on subs.domain like concat('%', hosts.domain));"
 #    - application:
-#      cmd: "${db}$"
-#      sql: "delete from subdomain where id not in (select subs.id from host as hosts join subdomain as subs on subs.domain like concat('%', hosts.domain));"
-#	- application:
 #         cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp"
 #         input: "${db.subdomain.domain}$"
 #	  output:
