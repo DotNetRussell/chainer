@@ -47,9 +47,11 @@ def getDataFromDb(table, column):
 
 def storeDataInDb(table, column, data):
 	for line in data:
-		sql = 'INSERT INTO ' + table + ' VALUES(null,\"' + line + '\");'
-		dbcursor.execute(sql)
-		dbconnection.commit()
+		entry = line.strip()
+		if not checkIfRowExists(table, column, entry):
+			sql = 'INSERT INTO ' + table + ' VALUES(null,\"' + entry + '\");'
+			dbcursor.execute(sql)
+			dbconnection.commit()
 
 def getCommand(chainerCommand):
 	command = re.sub(CHAINER_COMMAND_PREFIX_CONST, EMPTY, chainerCommand)
