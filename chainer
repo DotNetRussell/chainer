@@ -45,6 +45,7 @@ dbconnection = mysql.connector.connect(host="localhost", database='chainer', use
 dbcursor = dbconnection.cursor()
 
 CHAINER_COMMAND_CONST = r"(\${).*(}\$)"
+CHAINER_DELIM_CONST = "&"
 CHAINER_COMMAND_PREFIX_CONST = '(\${)'
 CHAINER_COMMAND_POSTFIX_CONST = '(}\$)'
 DB_CONST = 'db'
@@ -61,6 +62,11 @@ def checkIfRowExists(table, column, value):
 def getDataFromDb(table, column):
 	print('Getting db.' + table + '.' + column)
 	sql = "select distinct " + column + " from " + table + ";"
+	dbcursor.execute(sql)
+	return dbcursor.fetchall()
+
+def getDataFromDbTwoColumns(table, column1, column2):
+	sql = "select " + column1 + "," + column2 + " from " + table + ";"
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
@@ -85,9 +91,15 @@ def getCommand(chainerCommand):
 
 def processInputChainerCommand(chainerCommand):
 	command = getCommand(chainerCommand)
-	if DB_CONST in command:
+	if DB_CONST in command and CHAINER_DELIM_CONST not in command:
 		head,table,column = command.split('.')
 		return getDataFromDb(table,column)
+	elif DB_CONST in command and CHAINER_DELIM_CONST in command:
+		com1, com2 = command.split('&')
+		head1,table1,column1 = com1.split('.')
+		head2,table2,column2 = com2.split('.')
+		if table1 == table2:
+			return getDataFromDbTwoColumns(table1, column1, column2)
 
 def processOutputChainerCommand(storeLocation, data):
 	command = getCommand(storeLocation)
@@ -101,11 +113,20 @@ def processOutputChainerSqlCommandWithInput(sql, output, input):
 	dbcursor.execute(sql, (output.strip(), input.strip()))
 	dbconnection.commit()
 
+def processOutputChainerSqlCommandWithTwoInputs(sql, output, inputOne, inputTwo):
+	sql = re.sub(RESULT_CONST, '%s', sql.strip())
+	sql = re.sub(INPUT_CONST, '%s', sql.strip())
+	dbcursor.execute(sql, (output.strip(), inputOne.strip(), inputTwo.strip()))
+	dbconnection.commit()
+
 def composeBashCommandWithInput(command, input):
 	return re.sub(INPUT_CONST, input, command)
 
+def composeBashCommandWithTwoInputs(command, inputOne, inputTwo):
+	command = re.sub(INPUT_CONST, inputOne, command, 1)
+	return re.sub(INPUT_CONST, inputTwo, command, 2)
+
 def runSqlCommand(sql):
-#	print('Running sql command ' + sql)
 	dbcursor.execute(sql)
 	dbconnection.commit()
 
@@ -143,6 +164,7 @@ for value in config:
 				cleanupCommand = EMPTY
 				isChainerOutputLocation = False
 				isChainerSqlCommand = False
+				isDoubleChainerSqlCommand = False
 
 				if 'sourcefile' in outputObject:
 					sourceFile = outputObject['sourcefile']
@@ -161,11 +183,24 @@ for value in config:
 
 				chainerCommand = re.search(CHAINER_COMMAND_CONST, inputCommand)
 
+				if CHAINER_DELIM_CONST in inputCommand:
+					isDoubleChainerSqlCommand = True
+
 				if chainerCommand:
 					for item in processInputChainerCommand(chainerCommand.group()):
 						try:
-							inputData = item[0].strip()
-							command = composeBashCommandWithInput(cmd, inputData)
+							command = EMPTY
+							inputData = EMPTY
+							secondInputData = EMPTY
+
+							if not isDoubleChainerSqlCommand:
+								inputData = item[0].strip()
+								command = composeBashCommandWithInput(cmd, inputData)
+
+							else:
+								inputData = item[0].strip()
+								secondInputData = item[1].strip()
+								command = composeBashCommandWithTwoInputs(cmd, inputData, secondInputData)
 							print('Running: ' + command)
 							process = os.popen(command)
 							outputData = process.read() #doing this because it seams the command doesn't wait to complete if we don't read it
@@ -190,9 +225,16 @@ for value in config:
 							if outputData and isChainerSqlCommand:
 								print('Storing output in db')
 								if(isinstance(outputData, list)):
-									for line in outputData:
-										print('inserting ' + line + ' with command ' + storeSqlCommand)
-										processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
+									if not isDoubleChainerSqlCommand:
+										if 'nolistoutput' in outputObject:
+											print('inserting ' + str(outputData) + ' with command ' + storeSqlCommand)
+											processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, str(outputData))
+										else:
+											for line in outputData:
+												print('inserting ' + line.strip() + ' with command ' + storeSqlCommand)
+												processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
+									else:
+										processOutputChainerSqlCommandWithTwoInputs(storeSqlCommand, str(outputData), inputData, secondInputData)
 								else:
 									processOutputChainerSqlCommandWithInput(storeSqlCommand, outputData, inputData)
 
@@ -201,5 +243,3 @@ for value in config:
 
 						except Exception as error:
 							print(error)
-
-

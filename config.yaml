@@ -11,12 +11,16 @@
 #   - "service apache2 start;"
 #   - "apt-get install sublist3r -y;"
 #   - "apt-get install nmap -y;"
+#   - "apt-get install python3-pip python-dev libssl-dev libffi-dev -y"
+#   - "pip3 install anubis-netsec"
     - "echo 'Setting up DB'"
     - "mysql -u root '-ppassword' -e 'CREATE DATABASE chainer;' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `ipaddress` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `ipaddressopenport` (`id` INT NOT NULL AUTO_INCREMENT,`ipaddress` TEXT NOT NULL, `port` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
- 
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `nmapscriptoutput` (`id` INT NOT NULL AUTO_INCREMENT,`ipaddress` TEXT NOT NULL, `port` TEXT, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `niktoscriptoutput` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
+
 - #Stage 1
     id: 1
     name: "Phase one scan"
@@ -30,6 +34,15 @@
         location: "${db.subdomain.domain}$"
       cleanup:
        cmd: "rm .sublist3rtmp"
+    - application:
+      cmd: "anubis -t ${INPUT}$ | awk '/----/{y=1;next}y' | grep -v Subdomain > .anubistmp 2>/dev/null"
+      input: "${db.seed.domain}$"
+      output:
+       sourcefile: ".anubistmp"
+       store:
+        location: "${db.subdomain.domain}$"
+      cleanup:
+       cmd: "rm .anubistmp"
     - application:
       cmd: "${db}$"
       sql: "delete subs from subdomain as subs left join seed as seeds on subs.domain like concat('%', seeds.domain) where seeds.id is null;"
@@ -48,15 +61,36 @@
       sql: "delete from subdomain where ipaddress is NULL;"
 - #Stage 2
     id: 2
-    name: "Phase 2 script scans"
+    name: "Phase 2 port scans"
     run:
     - application:
       cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}$"
       input: ${db.subdomain.ipaddress}$
       output:
-       preoutputcmd: 'for port in $(cat .nmaptmp | grep open | grep -v "#" | grep -o -P "(?<=Ports: ).*" ); do echo $port | cut -d "/" -f1,5 | grep -v -P "Ignored|State:|filtered|\(|\)" >> .ports; done'
+       preoutputcmd: 'for port in $(cat .nmaptmp | grep open | grep -v "#" | grep -o -P "(?<=Ports: ).*" ); do echo $port | cut -d "/" -f1,5 | grep -v -P "Ignored|State:|filtered|\(|\)" | cut -d "/" -f1 >> .ports; done'
        sourcefile: ".ports"
        store:
         sql: "INSERT INTO ipaddressopenport (id,ipaddress,port) values(null,${INPUT}$,${RESULT}$);"
       cleanup:
        cmd: "rm .ports"
+- #Stage 3
+    id: 3
+    name: "Phase 3 script scans"
+    run:
+    - application:
+      cmd: "nmap -sC ${INPUT}$ -p ${INPUT}$ -oN .nmapscriptscan;"
+      input: "${db.ipaddressopenport.ipaddress&db.ipaddressopenport.port}$"
+      output:
+       sourcefile: ".nmapscriptscan"
+       store:
+        sql: "INSERT INTO nmapscriptoutput (id,ipaddress,port,output) values(null,${INPUT}$,${INPUT}$,${RESULT}$);"
+       cleanup:
+        cmd: "rm .nmapscriptscan"
+    - application:
+      cmd: "nikto -h https://${INPUT}$ > .niktooutput"
+      input: "${db.subdomain.domain}$"
+      output:
+       nolistoutput: True
+       sourcefile: ".niktooutput"
+       store:
+        sql: "INSERT INTO niktoscriptoutput (id, domain, output) values(null, ${INPUT}$, ${RESULT}$);"
