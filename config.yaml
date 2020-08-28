@@ -15,13 +15,14 @@
     - "mysql -u root '-ppassword' -e 'CREATE DATABASE chainer;' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `ipaddress` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `ipaddressopenport` (`id` INT NOT NULL AUTO_INCREMENT,`ipaddress` TEXT NOT NULL, `port` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
  
 - #Stage 1
     id: 1
     name: "Phase one scan"
     run:
     - application:
-      cmd: "sublist3r -d ${INPUT}$ -n -o .sublist3rtmp"
+      cmd: "sublist3r -d ${INPUT}$ -n -o .sublist3rtmp 2>/dev/null"
       input: "${db.seed.domain}$"
       output:
        sourcefile: ".sublist3rtmp"
@@ -33,20 +34,29 @@
       cmd: "${db}$"
       sql: "delete subs from subdomain as subs left join seed as seeds on subs.domain like concat('%', seeds.domain) where seeds.id is null;"
     - application:
-      cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp"
+      cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp 2>/dev/null"
       input: "${db.subdomain.domain}$"
       output:
        sourcefile: ".nmaptmp"
-       cmd: "cat .nmaptmp | grep Up | cut -d ' ' -f2"
+       postoutputcmd: "cat .nmaptmp | grep Up | cut -d ' ' -f2"
        store:
         sql: "UPDATE subdomain SET ipaddress = ${RESULT}$ where domain = ${INPUT}$"
       cleanup:
        cmd: "rm .nmaptmp"
-#	- application:
-#	  cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}"
-#	  input: ${db.subdomain.ip}$
-#          output:
-#          - cmd: "$(cat .nmaptmp | grep open | grep -v "#" | grep -o -P '(?<=Ports: ).*') ; do echo $port | cut -d "/" -f1,5 > ports; done"
-#            store:
-#            - location
-#	- application: 
+    - application:
+      cmd: "${db}$"
+      sql: "delete from subdomain where ipaddress is NULL;"
+- #Stage 2
+    id: 2
+    name: "Phase 2 script scans"
+    run:
+    - application:
+      cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}$"
+      input: ${db.subdomain.ipaddress}$
+      output:
+       preoutputcmd: 'for port in $(cat .nmaptmp | grep open | grep -v "#" | grep -o -P "(?<=Ports: ).*" ); do echo $port | cut -d "/" -f1,5 | grep -v -P "Ignored|State:|filtered|\(|\)" >> .ports; done'
+       sourcefile: ".ports"
+       store:
+        sql: "INSERT INTO ipaddressopenport (id,ipaddress,port) values(null,${INPUT}$,${RESULT}$);"
+      cleanup:
+       cmd: "rm .ports"

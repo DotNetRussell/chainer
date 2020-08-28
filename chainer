@@ -6,6 +6,20 @@ import sys
 import os
 import re
 
+banner="""
+    _,aaaaaaaaaaaaaaaaaaa,_                _,aaaaaaaaaaaaaaaaaaa,_
+  ,P"                     "Y,            ,P"                     "Y,
+ d'    ,aaaaaaaaaaaaaaa,    `b          d'    ,aaaaaaaaaaaaaaa,    `b
+d'   ,d"            ,aaabaaaa8aaaaaaaaaa8aaaadaaa,            "b,   `b
+I    I              I          Chainer           I              I    I
+Y,   `Y,            `aaaaaaaaaaaaaaaaaaaaaaaaaaaa'             P'   ,P
+ Y,   `baaaaaaaaaaaaaaad'   ,P          Y,   `baaaaaaaaaaaaaaId'   ,P
+  `b,                     ,d'            `b,                     ,d'
+    `baaaaaaaaaaaaaaaaaaad'                `baaaaaaaaaaaaaaaaaaad'
+"""
+
+print(banner)
+
 if len(sys.argv) < 3:
 	print('./chainer <seedsFilePath> <configFilePath>')
 	quit()
@@ -25,7 +39,6 @@ print('running setup')
 for command in config[0]['commands']:
 	process = os.popen(command)
 	output = process.read().strip()
-	print('Total Lines ' + str(len(output)))
 
 print('setup complete')
 dbconnection = mysql.connector.connect(host="localhost", database='chainer', user='root', password='password')
@@ -47,7 +60,7 @@ def checkIfRowExists(table, column, value):
 
 def getDataFromDb(table, column):
 	print('Getting db.' + table + '.' + column)
-	sql = "select " + column + " from " + table + ";"
+	sql = "select distinct " + column + " from " + table + ";"
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
@@ -59,9 +72,6 @@ def storeDataInDb(table, column, data):
 		entry = line.strip()
 		if not checkIfRowExists(table, column, entry):
 			input.append(str(entry))
-
-	print('Storing %s rows', str(len(input)))
-
 	if len(input) > 0:
 		params = ['(null, %s)' for item in input]
 		sql = 'INSERT INTO ' + table + ' (id, ' + column +') VALUES %s;' % ','.join(params)
@@ -88,7 +98,6 @@ def processOutputChainerCommand(storeLocation, data):
 def processOutputChainerSqlCommandWithInput(sql, output, input):
 	sql = re.sub(RESULT_CONST, '%s', sql.strip())
 	sql = re.sub(INPUT_CONST, '%s', sql.strip())
-	print(sql)
 	dbcursor.execute(sql, (output.strip(), input.strip()))
 	dbconnection.commit()
 
@@ -96,9 +105,9 @@ def composeBashCommandWithInput(command, input):
 	return re.sub(INPUT_CONST, input, command)
 
 def runSqlCommand(sql):
-	print('Running sql command ' + sql)
+#	print('Running sql command ' + sql)
 	dbcursor.execute(sql)
-
+	dbconnection.commit()
 
 print('Loading seeds into db')
 for seed in seeds:
@@ -110,9 +119,13 @@ for seed in seeds:
 		dbconnection.commit()
 
 for value in config:
+
+	if 'skipstage' in value.keys() and value['skipstage']:
+		print('Skipping: ' + value['name'])
+		continue
+
 	if 'name' in value.keys():
 		print('Running: ' + value['name'])
-
 
 	if 'run' in value.keys():
 		for application in value['run']:
@@ -134,16 +147,12 @@ for value in config:
 				if 'sourcefile' in outputObject:
 					sourceFile = outputObject['sourcefile']
 				if 'store' in outputObject:
-					print('Store Found')
-					print(outputObject['store'])
 
 					if 'location' in outputObject['store']:
 						storeLocation = outputObject['store']['location'].strip()
-						print('Store Location: ' + storeLocation)
 						isChainerOutputLocation = re.search(CHAINER_COMMAND_CONST, storeLocation)
 
 					if 'sql' in outputObject['store']:
-						print(outputObject['store']['sql'])
 						storeSqlCommand = outputObject['store']['sql'].strip()
 						isChainerSqlCommand = True
 
@@ -161,11 +170,17 @@ for value in config:
 							process = os.popen(command)
 							outputData = process.read() #doing this because it seams the command doesn't wait to complete if we don't read it
 
+							if 'preoutputcmd' in outputObject:
+#								print('Running output command ' + outputObject['preoutputcmd'])
+								process = os.popen(outputObject['preoutputcmd'])
+								outputData = process.read()
+
 							if sourceFile:
 								outputData = open(sourceFile, 'r').readlines()
 
-							if 'cmd' in outputObject:
-								process = os.popen(outputObject['cmd'])
+							if 'postoutputcmd' in outputObject:
+#								print('Running output command ' + outputObject['postoutputcmd'])
+								process = os.popen(outputObject['postoutputcmd'])
 								outputData = process.read()
 
 							if outputData and isChainerOutputLocation:
@@ -174,12 +189,17 @@ for value in config:
 
 							if outputData and isChainerSqlCommand:
 								print('Storing output in db')
-								processOutputChainerSqlCommandWithInput(storeSqlCommand, outputData, inputData)
+								if(isinstance(outputData, list)):
+									for line in outputData:
+										print('inserting ' + line + ' with command ' + storeSqlCommand)
+										processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
+								else:
+									processOutputChainerSqlCommandWithInput(storeSqlCommand, outputData, inputData)
 
 							if cleanupCommand:
 								os.popen(cleanupCommand)
-								print(cleanupCommand)
 
 						except Exception as error:
 							print(error)
+
 
