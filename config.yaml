@@ -12,9 +12,9 @@
 #   - "apt-get install sublist3r -y;"
 #   - "apt-get install nmap -y;"
     - "echo 'Setting up DB'"
-    - "mysql -u root '-ppassword' -e 'CREATE DATABASE attackchainer;' 2>/dev/null"
-    - "mysql -u root '-ppassword' 'attackchainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
-    - "mysql -u root '-ppassword' 'attackchainer' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
+    - "mysql -u root '-ppassword' -e 'CREATE DATABASE chainer;' 2>/dev/null"
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `subdomain` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `ipaddress` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
  
 - #Stage 1
     id: 1
@@ -31,17 +31,17 @@
        cmd: "rm .sublist3rtmp"
     - application:
       cmd: "${db}$"
-      sql: "delete from subdomain where id not in (select subs.id from host as hosts join subdomain as subs on subs.domain like concat('%', hosts.domain));"
-#    - application:
-#         cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp"
-#         input: "${db.subdomain.domain}$"
-#	  output:
-#	  - sourcefile: ".nmaptmp"
-#	    cmd: "cat .nmaptmp | grep Up | cut -d ' ' -f2"
-#	    store:
-#	      - sql: "UPDATE subdomain SET ip = ${RESULT}$ where domain = ${INPUT}$"
-#	    cleanup:
-#	      - cmd: "rm .nmaptmp"
+      sql: "delete subs from subdomain as subs left join seed as seeds on subs.domain like concat('%', seeds.domain) where seeds.id is null;"
+    - application:
+      cmd: "nmap -sn ${INPUT}$ -oG .nmaptmp"
+      input: "${db.subdomain.domain}$"
+      output:
+       sourcefile: ".nmaptmp"
+       cmd: "cat .nmaptmp | grep Up | cut -d ' ' -f2"
+       store:
+        sql: "UPDATE subdomain SET ipaddress = ${RESULT}$ where domain = ${INPUT}$"
+      cleanup:
+       cmd: "rm .nmaptmp"
 #	- application:
 #	  cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}"
 #	  input: ${db.subdomain.ip}$
