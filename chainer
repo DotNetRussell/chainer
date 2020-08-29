@@ -45,6 +45,7 @@ dbconnection = mysql.connector.connect(host="localhost", database='chainer', use
 dbcursor = dbconnection.cursor()
 
 CHAINER_COMMAND_CONST = r"(\${).*(}\$)"
+CHAINER_COMMAND_WITH_LOOKS_CONST = r"(?<=\${).*?(?=}\$)"
 CHAINER_DELIM_CONST = "&"
 CHAINER_COMMAND_PREFIX_CONST = '(\${)'
 CHAINER_COMMAND_POSTFIX_CONST = '(}\$)'
@@ -65,10 +66,21 @@ def getDataFromDb(table, column):
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
+def getDataFromDbWithConstraint(table, column, constraintColumn, constraint):
+	sql = 'select ' + column + ' from ' + table + ' where ' + constraintColumn + ' = ' + constraint + ';'
+	dbcursor.execute(sql)
+	return dbcursor.fetchall()
+
 def getDataFromDbTwoColumns(table, column1, column2):
 	sql = "select " + column1 + "," + column2 + " from " + table + ";"
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
+
+def getDataFromDbTwoColumnsWithConstraint(table, column1, column2, constraintColumn, constraint):
+	sql = "select " + column1 + "," + column2 + " from " + table + " where " + constraintColumn + " = " + constraint + ";"
+	dbcursor.execute(sql)
+	return dbcursor.fetchall()
+
 
 def storeDataInDb(table, column, data):
 	print('Storing results in db.'+table+'.'+column)
@@ -100,6 +112,21 @@ def processInputChainerCommand(chainerCommand):
 		head2,table2,column2 = com2.split('.')
 		if table1 == table2:
 			return getDataFromDbTwoColumns(table1, column1, column2)
+
+def processInputChainerCommandWithInputConstraint(chainerCommand, constraintCommand, constraint):
+	command = getCommand(chainerCommand)
+	if DB_CONST in command and CHAINER_DELIM_CONST not in command and CHAINER_DELIM_CONST not in chainerCommand:
+		ignorehead,ignoretable,constraintColumn = constraintCommand.split('.')
+		head,table,column = command.split('.')
+		return getDataFromDbWithConstraint(table,column,constraintColumn,constraint)
+	elif DB_CONST in command and CHAINER_DELIM_CONST in command:
+		ignorehead,ignoretable,constraintColumn = constraintCommand.split('.')
+		com1, com2 = command.split('&')
+		head1,table1,column1 = com1.split('.')
+		head2,table2,column2 = com2.split('.')
+		if table1 == table2:
+			return getDataFromDbTwoColumnsWithConstraint(table1, column1, column2, constraintColumn, constraint)
+
 
 def processOutputChainerCommand(storeLocation, data):
 	command = getCommand(storeLocation)
@@ -162,9 +189,18 @@ for value in config:
 				storeLocation = EMPTY
 				storeSqlCommand = EMPTY
 				cleanupCommand = EMPTY
+				inputConstraintColumn = EMPTY
+				inputConstraint = EMPTY
 				isChainerOutputLocation = False
 				isChainerSqlCommand = False
 				isDoubleChainerSqlCommand = False
+				hasInputConstraint = False
+
+				if 'inputconstraint' in application:
+					inputConstraints = re.findall(CHAINER_COMMAND_WITH_LOOKS_CONST, application['inputconstraint'])
+					inputConstraintColumn = inputConstraints[0]
+					inputConstraint = inputConstraints[1]
+					hasInputConstraint = True
 
 				if 'sourcefile' in outputObject:
 					sourceFile = outputObject['sourcefile']
@@ -182,12 +218,20 @@ for value in config:
 					cleanupCommand = application['cleanup']['cmd']
 
 				chainerCommand = re.search(CHAINER_COMMAND_CONST, inputCommand)
-
 				if CHAINER_DELIM_CONST in inputCommand:
 					isDoubleChainerSqlCommand = True
 
 				if chainerCommand:
-					for item in processInputChainerCommand(chainerCommand.group()):
+					results = []
+					if hasInputConstraint:
+						results = processInputChainerCommandWithInputConstraint(chainerCommand.group(), inputConstraintColumn, inputConstraint)
+					else:
+						results = processInputChainerCommand(chainerCommand.group())
+
+					if results == None:
+						continue
+
+					for item in results:
 						try:
 							command = EMPTY
 							inputData = EMPTY
@@ -201,6 +245,7 @@ for value in config:
 								inputData = item[0].strip()
 								secondInputData = item[1].strip()
 								command = composeBashCommandWithTwoInputs(cmd, inputData, secondInputData)
+
 							print('Running: ' + command)
 							process = os.popen(command)
 							outputData = process.read() #doing this because it seams the command doesn't wait to complete if we don't read it
@@ -227,11 +272,11 @@ for value in config:
 								if(isinstance(outputData, list)):
 									if not isDoubleChainerSqlCommand:
 										if 'nolistoutput' in outputObject:
-											print('inserting ' + str(outputData) + ' with command ' + storeSqlCommand)
+#											print('inserting ' + str(outputData) + ' with command ' + storeSqlCommand)
 											processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, str(outputData))
 										else:
 											for line in outputData:
-												print('inserting ' + line.strip() + ' with command ' + storeSqlCommand)
+#												print('inserting ' + line.strip() + ' with command ' + storeSqlCommand)
 												processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
 									else:
 										processOutputChainerSqlCommandWithTwoInputs(storeSqlCommand, str(outputData), inputData, secondInputData)

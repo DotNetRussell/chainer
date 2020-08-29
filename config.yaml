@@ -2,6 +2,7 @@
 - #Setup
     id: 0
     name: "Setup"
+#    skipstage: True
     dbUser: "root"
     dbPass: "password"
     commands:
@@ -20,10 +21,13 @@
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `ipaddressopenport` (`id` INT NOT NULL AUTO_INCREMENT,`ipaddress` TEXT NOT NULL, `port` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `nmapscriptoutput` (`id` INT NOT NULL AUTO_INCREMENT,`ipaddress` TEXT NOT NULL, `port` TEXT, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `niktoscriptoutput` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
+    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `whatweboutput` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
+
 
 - #Stage 1
     id: 1
     name: "Phase one scan"
+#    skipstage: True
     run:
     - application:
       cmd: "sublist3r -d ${INPUT}$ -n -o .sublist3rtmp 2>/dev/null"
@@ -62,6 +66,7 @@
 - #Stage 2
     id: 2
     name: "Phase 2 port scans"
+#    skipstage: True
     run:
     - application:
       cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}$"
@@ -78,8 +83,19 @@
     name: "Phase 3 script scans"
     run:
     - application:
+      cmd: "whatweb ${INPUT}$ > .whatweboutput"
+      input: "${db.ipaddressopenport.ipaddress}$"
+      inputconstraint: "${db.ipaddressopenport.port}$${443}$"
+      output:
+       sourcefile: ".whatweboutput"
+       store:
+        sql: "INSERT INTO whatweboutput (id,domain,output) values(null,${INPUT}$,${RESULT}$);"
+      cleanup:
+       cmd: "rm .whatweboutput"
+    - application:
       cmd: "nmap -sC ${INPUT}$ -p ${INPUT}$ -oN .nmapscriptscan;"
       input: "${db.ipaddressopenport.ipaddress&db.ipaddressopenport.port}$"
+      inputconstraint: "${db.ipaddressopenport.port}$${443}$"
       output:
        sourcefile: ".nmapscriptscan"
        store:
@@ -87,7 +103,7 @@
        cleanup:
         cmd: "rm .nmapscriptscan"
     - application:
-      cmd: "nikto -h https://${INPUT}$ > .niktooutput"
+      cmd: "nikto --ssl -h https://${INPUT}$ > .niktooutput"
       input: "${db.subdomain.domain}$"
       output:
        nolistoutput: True
