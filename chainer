@@ -62,12 +62,13 @@ def checkIfRowExists(table, column, value):
 
 def getDataFromDb(table, column):
 	print('Getting db.' + table + '.' + column)
-	sql = "select distinct " + column + " from " + table + ";"
+	sql = "select distinct " + str(column) + " from " + str(table) + ";"
+	print(sql)
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
 def getDataFromDbWithConstraint(table, column, constraintColumn, constraint):
-	sql = 'select ' + column + ' from ' + table + ' where ' + constraintColumn + ' = ' + constraint + ';'
+	sql = 'select ' + column + ' from ' + table + ' where ' + constraintColumn + ' = \"' + constraint + '\";'
 	dbcursor.execute(sql)
 	return dbcursor.fetchall()
 
@@ -93,6 +94,7 @@ def storeDataInDb(table, column, data):
 	if len(input) > 0:
 		params = ['(null, %s)' for item in input]
 		sql = 'INSERT INTO ' + table + ' (id, ' + column +') VALUES %s;' % ','.join(params)
+		print(sql)
 		dbcursor.execute(sql, input)
 		dbconnection.commit()
 
@@ -140,10 +142,10 @@ def processOutputChainerSqlCommandWithInput(sql, output, input):
 	dbcursor.execute(sql, (output.strip(), input.strip()))
 	dbconnection.commit()
 
-def processOutputChainerSqlCommandWithTwoInputs(sql, output, inputOne, inputTwo):
+def processOutputChainerSqlCommandWithTwoInputs(sql, inputOne, inputTwo, output):
 	sql = re.sub(RESULT_CONST, '%s', sql.strip())
 	sql = re.sub(INPUT_CONST, '%s', sql.strip())
-	dbcursor.execute(sql, (output.strip(), inputOne.strip(), inputTwo.strip()))
+	dbcursor.execute(sql, (inputOne.strip(), inputTwo.strip(), output.strip()))
 	dbconnection.commit()
 
 def composeBashCommandWithInput(command, input):
@@ -152,6 +154,12 @@ def composeBashCommandWithInput(command, input):
 def composeBashCommandWithTwoInputs(command, inputOne, inputTwo):
 	command = re.sub(INPUT_CONST, inputOne, command, 1)
 	return re.sub(INPUT_CONST, inputTwo, command, 2)
+
+def insertIntoInterestingOutputTable(endpoint,keyword,output):
+	sql = 'INSERT INTO interestingoutput (id, endpoint, keyword, output) values(null,%s,%s,%s);'
+	dbcursor.execute(sql, (endpoint,keyword,output))
+	dbconnection.commit()
+
 
 def runSqlCommand(sql):
 	dbcursor.execute(sql)
@@ -177,10 +185,56 @@ for value in config:
 
 	if 'run' in value.keys():
 		for application in value['run']:
-			cmd = application['cmd']
+			cmd = EMPTY
+			if 'cmd' in application:
+				cmd = application['cmd']
 
 			if DB_CONST in cmd:
 				runSqlCommand(application['sql'])
+			elif 'wordmap' in application:
+				wordmap = application['wordmap']
+				filterwords = wordmap['filterwords']
+				tables = wordmap['tables']
+
+				words = []
+
+				for table in tables:
+					tableName = table['name']
+					outputColumn = table['outputcolumn']
+					data = getDataFromDb(tableName, outputColumn)
+
+					for text in data:
+						for word in text[0].split():
+
+							if word.lower() not in map(lambda x:x.lower().strip(),filterwords):
+
+								word = word.replace('"','')
+								word = word.replace('\\n','')
+								words.append(word)
+
+				for word in words:
+					sql = 'INSERT INTO foundword (id,word) values(null,\"' + word + '\");'
+					runSqlCommand(sql)
+
+
+			elif 'interestingoutput' in application:
+				interestingOutput = application['interestingoutput']
+
+				tables = interestingOutput['tables']
+				keywords = interestingOutput['keywords']
+
+				for table in tables:
+					tableName = table['name']
+					identColumn = table['identcolumn']
+					outputColumn = table['outputcolumn']
+					data = getDataFromDb(tableName, identColumn)
+
+					for ident in data:
+						for keyword in keywords:
+							output = getDataFromDbWithConstraint(tableName, outputColumn, identColumn, ident[0])
+							if str(keyword).lower() in str(output[0]).lower():
+								insertIntoInterestingOutputTable(str(ident[0]),keyword,str(output[0]))
+
 			else:
 				inputCommand = application['input']
 				outputObject = application['output']
@@ -279,7 +333,7 @@ for value in config:
 #												print('inserting ' + line.strip() + ' with command ' + storeSqlCommand)
 												processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
 									else:
-										processOutputChainerSqlCommandWithTwoInputs(storeSqlCommand, str(outputData), inputData, secondInputData)
+										processOutputChainerSqlCommandWithTwoInputs(storeSqlCommand, inputData, secondInputData, str(outputData))
 								else:
 									processOutputChainerSqlCommandWithInput(storeSqlCommand, outputData, inputData)
 
