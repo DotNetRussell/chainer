@@ -5,20 +5,12 @@
 #    skipstage: True
     dbUser: "root"
     dbPass: "password"
+    webRoot: "/var/www/html"
+    webUser: "chainer"
+    webPass: "h@ckTheGibs0n!"
     commands:
     - "echo 'Installing applications'"
-#   - "apt-get update;"
-#   - "apt-get install python3 -y;"
-#   - "apt-get install python3-pip;"
-#   - "apt-get install mariadb -y;"
-#   - "apt-get install apache2 -y;"
-#   - "service apache2 start;"
-#   - "apt-get install sublist3r -y;"
-#   - "apt-get install nmap -y;"
-#   - "apt-get install nikto -y;"
-#   - "apt-get install whatweb -y;"
-#   - "apt-get install python3-pip python-dev libssl-dev libffi-dev -y"
-#   - "pip3 install anubis-netsec"
+#    - "apt install your custom applications here -y;"
     - "echo 'Setting up DB'"
     - "mysql -u root '-ppassword' -e 'CREATE DATABASE chainer;' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `seed` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL,PRIMARY KEY (`id`));' 2>/dev/null"
@@ -30,7 +22,6 @@
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `interestingoutput` (`id` INT NOT NULL AUTO_INCREMENT,`endpoint` TEXT NOT NULL, `keyword` TEXT, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `foundword` (`id` INT NOT NULL AUTO_INCREMENT,`word` TEXT NOT NULL, PRIMARY KEY (`id`));' 2>/dev/null"
     - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `wordcloud` (`id` INT NOT NULL AUTO_INCREMENT,`word` TEXT NOT NULL, `count` INT NOT NULL, PRIMARY KEY (`id`));' 2>/dev/null"
-
 
 #can't currently capture davtest output 
 #    - "mysql -u root '-ppassword' 'chainer' -e 'CREATE TABLE `webdavoutput` (`id` INT NOT NULL AUTO_INCREMENT,`domain` TEXT NOT NULL, `output` TEXT, PRIMARY KEY (`id`));' 2>/dev/null"
@@ -74,6 +65,7 @@
     - application:
       cmd: "${db}$"
       sql: "delete from subdomain where ipaddress is NULL;"
+
 - #Stage 2
     id: 2
     name: "Phase 2 port scans"
@@ -89,6 +81,7 @@
         sql: "INSERT INTO ipaddressopenport (id,ipaddress,port) values(null,${INPUT}$,${RESULT}$);"
       cleanup:
        cmd: "rm .ports"
+
 - #Stage 3
     id: 3
     name: "Phase 3 script scans"
@@ -127,13 +120,14 @@
 #        cmd: "rm .davoutput"
 
     - application:
-      cmd: "nikto --ssl -h https://${INPUT}$ > .niktooutput"
+      cmd: "nikto -nointeractive -ssl -maxtime 1200 -Tuning x 4 6 -h https://${INPUT}$ > .niktooutput"
       input: "${db.subdomain.domain}$"
       output:
        nolistoutput: True
        sourcefile: ".niktooutput"
        store:
         sql: "INSERT INTO niktoscriptoutput (id, domain, output) values(null, ${INPUT}$, ${RESULT}$);"
+
 - #Stage 4
     id: 4
     name: "Heuristics"

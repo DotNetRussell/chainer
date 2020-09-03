@@ -330,7 +330,6 @@ for value in config:
 							outputData = process.read() #doing this because it seams the command doesn't wait to complete if we don't read it
 
 							if 'preoutputcmd' in outputObject:
-#								print('Running output command ' + outputObject['preoutputcmd'])
 								process = os.popen(outputObject['preoutputcmd'])
 								outputData = process.read()
 
@@ -338,7 +337,6 @@ for value in config:
 								outputData = open(sourceFile, 'r').readlines()
 
 							if 'postoutputcmd' in outputObject:
-#								print('Running output command ' + outputObject['postoutputcmd'])
 								process = os.popen(outputObject['postoutputcmd'])
 								outputData = process.read()
 
@@ -351,11 +349,9 @@ for value in config:
 								if(isinstance(outputData, list)):
 									if not isDoubleChainerSqlCommand:
 										if 'nolistoutput' in outputObject:
-#											print('inserting ' + str(outputData) + ' with command ' + storeSqlCommand)
 											processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, str(outputData))
 										else:
 											for line in outputData:
-#												print('inserting ' + line.strip() + ' with command ' + storeSqlCommand)
 												processOutputChainerSqlCommandWithInput(storeSqlCommand, inputData, line)
 									else:
 										processOutputChainerSqlCommandWithTwoInputs(storeSqlCommand, inputData, secondInputData, str(outputData))
