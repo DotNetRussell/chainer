@@ -42,7 +42,6 @@ for command in config[0]['commands']:
 
 print('setup complete')
 dbconnection = mysql.connector.connect(host="localhost", database='chainer', user='root', password='password')
-dbcursor = dbconnection.cursor()
 
 CHAINER_COMMAND_CONST = r"(\${).*(}\$)"
 CHAINER_COMMAND_WITH_LOOKS_CONST = r"(?<=\${).*?(?=}\$)"
@@ -55,36 +54,51 @@ RESULT_CONST = '(\${RESULT}\$)'
 EMPTY = ''
 
 def checkIfRowExists(table, column, value):
+	dbcursor = dbconnection.cursor()
 	sql = "select count(*) from " + table + " where " + column +" = '" + value + "';"
 	dbcursor.execute(sql)
 	count = dbcursor.fetchone()
+	dbcursor.close()
 	return count[0] > 0
 
 def getDataFromDb(table, column):
+	dbcursor = dbconnection.cursor()
 	print('Getting db.' + table + '.' + column)
 	sql = "select distinct " + str(column) + " from " + str(table) + ";"
 	print(sql)
 	dbcursor.execute(sql)
-	return dbcursor.fetchall()
+	results = dbcursor.fetchall()
+	dbcursor.close()
+	return results
 
 def getDataFromDbWithConstraint(table, column, constraintColumn, constraint):
+	dbcursor = dbconnection.cursor()
 	sql = 'select ' + column + ' from ' + table + ' where ' + constraintColumn + ' = \"' + constraint + '\";'
 	dbcursor.execute(sql)
-	return dbcursor.fetchall()
+	results = dbcursor.fetchall()
+	dbcursor.close()
+	return results
 
 def getDataFromDbTwoColumns(table, column1, column2):
+	dbcursor = dbconnection.cursor()
 	sql = "select " + column1 + "," + column2 + " from " + table + ";"
 	dbcursor.execute(sql)
-	return dbcursor.fetchall()
+	results = dbcursor.fetchall()
+	dbcursor.close()
+	return results
 
 def getDataFromDbTwoColumnsWithConstraint(table, column1, column2, constraintColumn, constraint):
+	dbcursor = dbconnection.cursor()
 	sql = "select " + column1 + "," + column2 + " from " + table + " where " + constraintColumn + " = " + constraint + ";"
 	dbcursor.execute(sql)
-	return dbcursor.fetchall()
-
+	results = dbcursor.fetchall()
+	dbcursor.close()
+	return results
 
 def storeDataInDb(table, column, data):
 	print('Storing results in db.'+table+'.'+column)
+
+	dbcursor = dbconnection.cursor()
 
 	input = []
 	for line in data:
@@ -97,6 +111,8 @@ def storeDataInDb(table, column, data):
 		print(sql)
 		dbcursor.execute(sql, input)
 		dbconnection.commit()
+
+	dbcursor.close()
 
 def getCommand(chainerCommand):
 	command = re.sub(CHAINER_COMMAND_PREFIX_CONST, EMPTY, chainerCommand)
@@ -137,16 +153,20 @@ def processOutputChainerCommand(storeLocation, data):
 		storeDataInDb(table,column,data)
 
 def processOutputChainerSqlCommandWithInput(sql, output, input):
+	dbcursor = dbconnection.cursor()
 	sql = re.sub(RESULT_CONST, '%s', sql.strip())
 	sql = re.sub(INPUT_CONST, '%s', sql.strip())
 	dbcursor.execute(sql, (output.strip(), input.strip()))
 	dbconnection.commit()
+	dbcursor.close()
 
 def processOutputChainerSqlCommandWithTwoInputs(sql, inputOne, inputTwo, output):
+	dbcursor = dbconnection.cursor()
 	sql = re.sub(RESULT_CONST, '%s', sql.strip())
 	sql = re.sub(INPUT_CONST, '%s', sql.strip())
 	dbcursor.execute(sql, (inputOne.strip(), inputTwo.strip(), output.strip()))
 	dbconnection.commit()
+	dbcursor.close()
 
 def composeBashCommandWithInput(command, input):
 	return re.sub(INPUT_CONST, input, command)
@@ -156,14 +176,17 @@ def composeBashCommandWithTwoInputs(command, inputOne, inputTwo):
 	return re.sub(INPUT_CONST, inputTwo, command, 2)
 
 def insertIntoInterestingOutputTable(endpoint,keyword,output):
+	dbcursor = dbconnection.cursor()
 	sql = 'INSERT INTO interestingoutput (id, endpoint, keyword, output) values(null,%s,%s,%s);'
 	dbcursor.execute(sql, (endpoint,keyword,output))
 	dbconnection.commit()
-
+	dbcursor.close()
 
 def runSqlCommand(sql):
+	dbcursor = dbconnection.cursor()
 	dbcursor.execute(sql)
 	dbconnection.commit()
+	dbcursor.close()
 
 print('Loading seeds into db')
 for seed in seeds:
@@ -171,8 +194,10 @@ for seed in seeds:
 	if seed and not checkIfRowExists("seed","domain",seed):
 		sql = "INSERT INTO seed (id,domain) VALUES (%s, %s)"
 		values = (0,seed)
+		dbcursor = dbconnection.cursor()
 		dbcursor.execute(sql,values)
 		dbconnection.commit()
+		dbcursor.close()
 
 for value in config:
 

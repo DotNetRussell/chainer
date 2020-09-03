@@ -2,7 +2,7 @@
 - #Setup
     id: 0
     name: "Setup"
-    skipstage: True
+#    skipstage: True
     dbUser: "root"
     dbPass: "password"
     commands:
@@ -38,7 +38,7 @@
 - #Stage 1
     id: 1
     name: "Phase one scan"
-    skipstage: True
+#    skipstage: True
     run:
     - application:
       cmd: "sublist3r -d ${INPUT}$ -n -o .sublist3rtmp 2>/dev/null"
@@ -77,7 +77,7 @@
 - #Stage 2
     id: 2
     name: "Phase 2 port scans"
-    skipstage: True
+#    skipstage: True
     run:
     - application:
       cmd: "nmap --open --top-ports=1000 -oG .nmaptmp ${INPUT}$"
@@ -92,7 +92,7 @@
 - #Stage 3
     id: 3
     name: "Phase 3 script scans"
-    skipstage: True
+#    skipstage: True
     run:
     - application:
       cmd: "whatweb ${INPUT}$ > .whatweboutput"
